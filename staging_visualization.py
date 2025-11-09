@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from lifelines import KaplanMeierFitter
 
 sns.set_style("whitegrid")
 plt.rcParams["figure.figsize"] = (14, 8)
@@ -83,6 +84,7 @@ M_STAGE_ORDER = ["M0", "M1", "MX"]
 FIG_STAGE_DISTRIBUTION = "tnm_staging_distribution.png"
 FIG_TN_HEATMAP = "tn_heatmap.png"
 FIG_SURVIVAL = "os_by_stage.png"
+FIG_KM_SURVIVAL = "km_by_stage.png"
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,6 +102,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=BASE_DIR,
         help="Directory to store generated figures (default: project root).",
+    )
+    parser.add_argument(
+        "--km-min-group",
+        type=int,
+        default=15,
+        help="Minimum patients per stage required to draw a Kaplan-Meier curve (default: %(default)s).",
     )
     return parser.parse_args()
 
@@ -330,12 +338,17 @@ def plot_survival_by_stage(summary: pd.DataFrame, output_path: Path) -> bool:
     if summary.empty:
         return False
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    bars = ax.bar(summary.index, summary["median_os"], color="slateblue", alpha=0.85)
+    fig, ax = plt.subplots(figsize=(12, 7))
+
+    new_labels = [f"{stage}\n(n={int(count)})" for stage, count in zip(summary.index, summary["patient_count"])]
+
+    bars = ax.bar(new_labels, summary["median_os"], color="slateblue", alpha=0.85)
+
     ax.set_ylabel("Median OS (months)", fontsize=11)
     ax.set_title("Overall Survival by AJCC Stage (TCGA STAD)", fontsize=13, fontweight="bold")
     ax.set_xlabel("Stage", fontsize=11)
-    ax.tick_params(axis="x", rotation=45)
+    ax.set_xticklabels(new_labels, rotation=45, ha="right", rotation_mode="anchor")
+
     ax.grid(axis="y", alpha=0.3)
 
     for bar, rate in zip(bars, summary["event_rate_pct"]):
@@ -348,6 +361,57 @@ def plot_survival_by_stage(summary: pd.DataFrame, output_path: Path) -> bool:
             fontsize=9,
         )
 
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return True
+
+
+def plot_kaplan_meier(
+    df: pd.DataFrame,
+    output_path: Path,
+    min_group_size: int = 15,
+) -> bool:
+    km_df = df.dropna(subset=["overall_survival_months", "ajcc_stage"]).copy()
+    if km_df.empty:
+        return False
+
+    ordered_stages = [
+        stage for stage in STAGE_ORDER if stage in km_df["ajcc_stage"].unique()
+    ] + [
+        stage for stage in km_df["ajcc_stage"].unique() if stage not in STAGE_ORDER
+    ]
+
+    kmf = KaplanMeierFitter()
+    plotted = False
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for stage in ordered_stages:
+        stage_df = km_df[km_df["ajcc_stage"] == stage]
+        if len(stage_df) < min_group_size:
+            continue
+        kmf.fit(
+            durations=stage_df["overall_survival_months"],
+            event_observed=stage_df["survival_event"],
+            label=f"{stage} (n={len(stage_df)})",
+        )
+        kmf.plot_survival_function(ax=ax, ci_show=True)
+        plotted = True
+
+    if not plotted:
+        plt.close(fig)
+        return False
+
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Overall survival probability", fontsize=11)
+    ax.set_xlabel("Months since diagnosis", fontsize=11)
+    ax.set_title(
+        "Kaplan–Meier Survival by AJCC Stage (TCGA STAD)",
+        fontsize=13,
+        fontweight="bold",
+    )
+    ax.grid(alpha=0.3)
+    ax.legend(title="Stage", fontsize=9)
     plt.tight_layout()
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
@@ -420,6 +484,14 @@ def main() -> None:
     else:
         skipped_outputs.append(
             f"{survival_path} (insufficient AJCC stage + survival duration data)"
+        )
+
+    km_path = figures_dir / FIG_KM_SURVIVAL
+    if plot_kaplan_meier(df, km_path, min_group_size=args.km_min_group):
+        generated_files.append(km_path)
+    else:
+        skipped_outputs.append(
+            f"{km_path} (no stages met km_min_group={args.km_min_group})"
         )
 
     print_summary(stage_counts, survival_summary)

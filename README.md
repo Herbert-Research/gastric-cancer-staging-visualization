@@ -44,6 +44,8 @@ This codebase substantiates the translational premise that station-specific lymp
     station-level guidance is clinically most consequential.
 - `os_by_stage.png` – median overall survival with event rates, underscoring the 
     outcome gradient that Aim 1 seeks to tighten.
+- `km_by_stage.png` – Kaplan–Meier survival curves by AJCC stage (optional; stages  
+    must meet the minimum cohort size threshold).
 
 Any additional PNGs present in the repository are archived artifacts from internal discussions and are not part of the automated workflow.
 
@@ -106,10 +108,12 @@ python staging_visualization.py --data data/tcga_2018_clinical_data.tsv --output
 
 Default inputs live in `data/tcga_2018_clinical_data.tsv`, but both the dataset and configuration paths can be swapped to reflect local registries or institution-specific coefficients.
 
+Use `--km-min-group <int>` to control the minimum number of patients required for a stage-specific Kaplan–Meier curve (default: 15). This keeps the panel focused on strata with sufficient statistical support while still documenting the shape of survival for dissertation reviewers.
+
 ## Software Requirements
 
 - Python 3.9 or newer.
-- Packages enumerated in `requirements.txt` (pandas, numpy, matplotlib, seaborn).
+- Packages enumerated in `requirements.txt` (pandas, numpy, matplotlib, seaborn, lifelines).
 - For Debian/Ubuntu hosts lacking tooling, install once:
 
 ```bash
@@ -139,6 +143,8 @@ This safeguard enables screening committees to verify dataset integrity without 
     observational data and should not be used for causal inference without institutional validation.
 - Reported survival summaries reflect overall survival only; disease-free 
     intervals were not uniformly available in the 2018 release.
+- Kaplan–Meier curves showcase the full hazard trajectory for each AJCC stage; 
+    expanded KM and log-rank analyses are planned for the prospective dissertation phase once local registries are enrolled.
 
 ## Repository Stewardship
 
