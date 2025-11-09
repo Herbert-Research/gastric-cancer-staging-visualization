@@ -1,7 +1,3 @@
-Here is the revised `README.md` for your **Gastric Cancer Staging Visualization** project. I have adapted the professional layout, tone, and structural elements from your template (`READMEVorlage.md`) while retaining the specific technical and clinical details of this repository.
-
------
-
 # Gastric Cancer Staging Visualization
 
 Supporting analytics package for the proposed PhD dissertation **“Prospective Validation of Station-Specific Risk Guidance for KLASS-Standardized Gastrectomy.”** This repository distils retrospective TCGA evidence into reproducible figures that anchor Aim 1 calibration targets and communicate methodological readiness to admissions reviewers and clinical collaborators.
