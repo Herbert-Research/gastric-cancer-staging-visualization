@@ -35,7 +35,7 @@ The core pipeline (`staging_visualization.py`) executes three synchronized phase
 
 Running the default configuration produces clinically-interpretable summaries demonstrating the pipeline's analytical rigor:
 
-```bash
+```text
 
 Gastric Cancer Staging Visualization
 ============================================================
