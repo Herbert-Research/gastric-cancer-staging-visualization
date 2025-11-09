@@ -34,14 +34,6 @@ This codebase substantiates the translational premise that station-specific lymp
 3. **Figure generation** – exports publication-quality PNGs for committee packets and 
     slide decks.
 
-`risk_calculator.py` extends the repo with a KLASS-inspired risk modelling workflow:
-1. **Model configuration** – loads `models/heuristic_klass.json` (logistic recurrence 
-    heuristics) and, when available, `models/han2012_jco.json` (Han 2012 Cox survival nomogram).
-2. **Cohort harmonisation** – reuses the TCGA TSV, imputing tumor size and LN ratio 
-    when clinical fields are missing and flagging every substitution.
-3. **Dual-model reporting** – exports recurrence, sensitivity, survival, and    
-    calibration figures so faculty can evaluate actuarial readiness alongside staging visuals.
-
 ## Generated Figures
 
 **Staging visualization output**
@@ -52,16 +44,6 @@ This codebase substantiates the translational premise that station-specific lymp
     station-level guidance is clinically most consequential.
 - `os_by_stage.png` – median overall survival with event rates, underscoring the 
     outcome gradient that Aim 1 seeks to tighten.
-
-**Risk calculator output**
-
-- `risk_predictions.png` – patient-level recurrence estimates with categorical mix.
-- `sensitivity_analysis.png` – tornado-style chart showing how LN yield shifts risk.
-- `tcga_cohort_summary.png` – histogram + TN heatmap for cohort-wide predictions.
-- `calibration_curve.png` – optional if scikit-learn is installed and event labels    
-    exist.
-- `survival_predictions_han2012.png` and `survival_vs_recurrence_comparison.png` – 
-    only when the Han 2012 Cox config is present and `--skip-survival` is not set.
 
 Any additional PNGs present in the repository are archived artifacts from internal discussions and are not part of the automated workflow.
 
@@ -82,19 +64,6 @@ python staging_visualization.py
 
 # Override defaults if needed
 python staging_visualization.py --data /path/to/tcga.tsv --output-dir figures/
-```
-
-### Risk Calculator
-
-```bash
-# Run the dual-model risk workflow against the bundled TCGA cohort
-python risk_calculator.py --data data/tcga_2018_clinical_data.tsv --output-dir reports/
-
-# Point to custom configs or disable survival outputs if Cox resources are unavailable
-python risk_calculator.py \
-  --model-config models/heuristic_klass.json \
-  --survival-model models/han2012_jco.json \
-  --skip-survival
 ```
 
 Default inputs live in `data/tcga_2018_clinical_data.tsv`, but both the dataset and configuration paths can be swapped to reflect local registries or institution-specific coefficients.
