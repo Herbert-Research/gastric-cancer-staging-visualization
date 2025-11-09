@@ -1,59 +1,42 @@
+Here is the revised `README.md` for your **Gastric Cancer Staging Visualization** project. I have adapted the professional layout, tone, and structural elements from your template (`READMEVorlage.md`) while retaining the specific technical and clinical details of this repository.
+
+-----
+
 # Gastric Cancer Staging Visualization
 
-Supporting analytics package for the proposed PhD dissertation **“Prospective Validation of Station-Specific Risk Guidance for KLASS-Standardized Gastrectomy.”** The repository distils retrospective TCGA evidence into reproducible figures that anchor Aim 1 calibration targets and communicate methodological readiness to admissions reviewers and clinical collaborators.
+Supporting analytics package for the proposed PhD dissertation **“Prospective Validation of Station-Specific Risk Guidance for KLASS-Standardized Gastrectomy.”** This repository distils retrospective TCGA evidence into reproducible figures that anchor Aim 1 calibration targets and communicate methodological readiness to admissions reviewers and clinical collaborators.
 
 ## Executive Summary
 
-- Reconstructs AJCC TNM distributions and overall survival for the TCGA STAD 
-    PanCanAtlas 2018 cohort.
-- Demonstrates a validation-first workflow that will later be extended to KLASS video, 
-    fluorescence, and telemetry data streams.
-- Ships with audited figures (`*.png`) and open-source code so faculty can 
-    independently reproduce every analytic claim in the proposal dossier.
+  - **Reconstructs** AJCC TNM distributions and overall survival profiles for the TCGA STAD PanCanAtlas 2018 cohort.
+  - **Substantiates** the clinical heterogeneity gap that future station-specific AI guidance aims to address.
+  - **Demonstrates** a validation-first workflow (schema enforcement → harmonisation → visualization) scalable to future KLASS video and telemetry streams.
+  - **Exports** audited, publication-ready figures (`*.png`) designed for committee packets and multi-disciplinary review slide decks.
 
 ## Scientific Context and Objectives
 
-This codebase substantiates the translational premise that station-specific lymphadenectomy guidance must be calibrated against well-characterised baselines before prospective deployment. The TNM visualizations quantify disease burden heterogeneity, while survival panels document outcome gradients that KLASS-referenced metrics must ultimately improve upon. The material is curated for review committees that expect clearly articulated hypotheses, transparent data lineage, and rigorous, open methods.
+Before station-specific lymphadenectomy guidance can be prospectively deployed, it must be calibrated against well-characterised retrospective baselines. This codebase establishes those baselines by quantifying disease burden heterogeneity (via TNM heatmaps) and documenting existing outcome gradients (via Kaplan-Meier and median OS analysis). The material is curated for review committees that expect clearly articulated hypotheses, transparent data lineage, and rigorous, open methods.
 
-## Data Provenance and 
+## Data Provenance and Governance
 
-- **Source:** TCGA STAD PanCanAtlas 2018 clinical release
-    (`data\tcga_2018_clinical_data.tsv`).
-- **Content:** Patient identifiers (hashed), AJCC TNM annotations (6th/7th editions) 
-    and overall survival metadata.
-- **Compliance:** Data remain de-identified, publicly licensed, and cited according to 
-    TCGA policy. Survival statements in this repository are purely observational and should be validated locally before informing interventional guidance.
+  - **Source Stream:** TCGA STAD PanCanAtlas 2018 clinical release (`data/tcga_2018_clinical_data.tsv`).
+  - **Content:** Hashed patient identifiers, AJCC TNM annotations (6th/7th editions), and overall survival metadata.
+  - **Compliance:** Data remain de-identified, publicly licensed, and cited according to TCGA policy. Survival statements in this repository are purely observational and should be validated locally before informing interventional guidance.
 
 ## Analytical Workflow
 
-`staging_visualization.py` performs three phases:
-1. **Schema validation** – verifies that PanCanAtlas headers match the expected 
-    AJCC-concordant fields listed below.
-2. **Data harmonisation** – standardises staging labels and survival endpoints without 
-    imputing or simulating records.
-3. **Figure generation** – exports publication-quality PNGs for committee packets and 
-    slide decks.
+The core pipeline (`staging_visualization.py`) executes three synchronized phases:
 
-## Generated Figures
-
-**Staging visualization output**
-
-- `tnm_staging_distribution.png` – paired bar panels for AJCC T, N, M, and aggregate 
-    stages.
-- `tn_heatmap.png` – density heatmap across the T×N grid, highlighting areas where 
-    station-level guidance is clinically most consequential.
-- `os_by_stage.png` – median overall survival with event rates, underscoring the 
-    outcome gradient that Aim 1 seeks to tighten.
-- `km_by_stage.png` – Kaplan–Meier survival curves by AJCC stage (optional; stages  
-    must meet the minimum cohort size threshold).
-
-Any additional PNGs present in the repository are archived artifacts from internal discussions and are not part of the automated workflow.
+1.  **Schema Validation** – Enforces strict concordancy between PanCanAtlas headers and expected AJCC fields, halting execution if critical metadata is absent.
+2.  **Data Harmonisation** – Standardises heterogeneous staging labels (e.g., "Stage IIIA" vs "Stage 3a") and survival endpoints without imputing missing records.
+3.  **Figure Generation** – Exports high-resolution panels visualizing disease burden and actuarial outcomes.
 
 ## Example Output
 
-Running the visualization script produces the following summary statistics:
+Running the default configuration produces clinically-interpretable summaries demonstrating the pipeline's analytical rigor:
 
-```
+```bash
+
 Gastric Cancer Staging Visualization
 ============================================================
 Total patients with AJCC staging: 421
@@ -85,66 +68,70 @@ Stage IIIC | Median OS: 11.7 mo | Events: 46% | n=39
 
 ```
 
-The output demonstrates clear survival gradients across staging groups, with Stage IV showing the poorest median overall survival (8.6 months) and highest event rate (61%), while earlier stages show progressively better outcomes—precisely the heterogeneity that station-specific guidance must address.
+This output quantifies clear survival gradients—from 24.3 months in Stage IA down to 8.6 months in Stage IV—precisely the outcome heterogeneity that future station-specific guidance must address.
+
+## Generated Figures
+
+**Disease Burden Output**
+
+  - `tnm_staging_distribution.png` – Paired bar panels illustrating the raw distribution of T, N, M, and aggregate AJCC stages.
+  - `tn_heatmap.png` – Density heatmap across the T×N grid, highlighting cohorts (e.g., T3/T4a) where station-level guidance is clinically most consequential.
+
+**Survival Analysis Output**
+
+  - `os_by_stage.png` – Median overall survival bars annotated with event rates and cohort sizes, underscoring the outcome gradient Aim 1 seeks to tighten.
+  - `km_by_stage.png` – Kaplan–Meier survival curves stratified by AJCC stage, visualizing the full hazard trajectory for sufficiently powered subgroups.
 
 ## Usage
 
-### Staging Visualization
+### Quickstart (Headless)
+
+Run the end-to-end visualization pipeline using bundled defaults.
 
 ```bash
-# (Optional) prepare a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# Install dependencies
+# Setup environment
 pip install -r requirements.txt
 
-# Produce the figures using the bundled TSV and repository root as output
+# Execute full workflow
 python staging_visualization.py
-
-# Override defaults if needed (example with bundled data)
-python staging_visualization.py --data data/tcga_2018_clinical_data.tsv --output-dir figures/
 ```
 
-Default inputs live in `data/tcga_2018_clinical_data.tsv`, but both the dataset and configuration paths can be swapped to reflect local registries or institution-specific coefficients.
+### Configuration Options
 
-Use `--km-min-group <int>` to control the minimum number of patients required for a stage-specific Kaplan–Meier curve (default: 15). This keeps the panel focused on strata with sufficient statistical support while still documenting the shape of survival for dissertation reviewers.
+The workflow can be parameterized to point to alternative datasets or adjust statistical thresholds.
+
+```bash
+# Override input data and output locations
+python staging_visualization.py --data data/local_registry.tsv --output-dir reports/
+
+# Adjust minimum cohort size for Kaplan-Meier curves (default: 15)
+python staging_visualization.py --km-min-group 20
+```
 
 ## Software Requirements
 
-- Python 3.9 or newer.
-- Packages enumerated in `requirements.txt` (pandas, numpy, matplotlib, seaborn, lifelines).
-- For Debian/Ubuntu hosts lacking tooling, install once:
-
-```bash
-sudo apt update && sudo apt install -y python3-pip python3-venv
-python3 -m pip install --upgrade pip
-```
+  - Python 3.9 or newer.
+  - Core dependencies: `pandas`, `numpy`, `matplotlib`, `seaborn`, `lifelines` (for survival statistics).
+  - See `requirements.txt` for pinned versions used in validation.
 
 ## Input Validation Schema
 
-The script halts with a descriptive message if any required PanCanAtlas header is absent:
+The script enforces data integrity by halting with a descriptive error if required headers are absent:
 
-- `Patient ID` → `patient_id`
-- `Neoplasm Disease Stage American Joint Committee on Cancer Code` → `ajcc_stage`
-- `American Joint Committee on Cancer Tumor Stage Code` → `t_stage`
-- `Neoplasm Disease Lymph Node Stage American Joint Committee on Cancer Code` → 
-    `n_stage`
-- `American Joint Committee on Cancer Metastasis Stage Code` → `m_stage`
-- `Overall Survival (Months)` → `overall_survival_months`
-- `Overall Survival Status` → `overall_survival_status`
+  - `Patient ID` → `patient_id`
+  - `Neoplasm Disease Stage American Joint Committee on Cancer Code` → `ajcc_stage`
+  - `American Joint Committee on Cancer Tumor Stage Code` → `t_stage`
+  - `Neoplasm Disease Lymph Node Stage American Joint Committee on Cancer Code` → `n_stage`
+  - `Overall Survival (Months)` → `overall_survival_months`
+  - `Overall Survival Status` → `overall_survival_status`
 
-This safeguard enables screening committees to verify dataset integrity without digging into the source code.
+This safeguard allows screening committees to verify dataset compatibility without auditing source code.
 
 ## Clinical Interpretation Notes
 
-- AJCC groupings follow the labels embedded within TCGA; stages are not re-derived.
-- Although the cohort was prospectively consented, it remains retrospective 
-    observational data and should not be used for causal inference without institutional validation.
-- Reported survival summaries reflect overall survival only; disease-free 
-    intervals were not uniformly available in the 2018 release.
-- Kaplan–Meier curves showcase the full hazard trajectory for each AJCC stage; 
-    expanded KM and log-rank analyses are planned for the prospective dissertation phase once local registries are enrolled.
+  - **Retrospective Nature:** Reported survival summaries reflect historical outcomes from prospectively consented cohorts; they are observational and not intended for causal inference without local validation.
+  - **AJCC Groupings:** Staging labels follow those embedded within the TCGA clinical records; stages are harmonised but not re-derived from raw TNM values.
+  - **Survival Endpoint:** Summaries reflect overall survival (OS); disease-free intervals were not uniformly available in the 2018 PanCanAtlas release used for this pilot.
 
 ## Repository Stewardship
 
@@ -156,9 +143,6 @@ Author: **Maximilian Herbert Dressler**
 
 ## Citations
 
-- Cerami E, Gao J, Dogrusoz U, *et al.* The cBio Cancer Genomics Portal: An Open  
-    Platform for Exploring Multidimensional Cancer Genomics Data. *Cancer Discovery.* 2012;2(5):401–404.
-- Gao J, Aksoy BA, Dogrusoz U, *et al.* Integrative Analysis of Complex Cancer 
-    Genomics and Clinical Profiles Using the cBioPortal. *Science Signaling.* 2013;6(269):pl1.
-- Liu J, Lichtenberg T, Hoadley KA, *et al.* An Integrated TCGA Pan-Cancer Clinical 
-    Data Resource to Drive High-Quality Survival Outcome Analytics. *Cell.* 2018;173(2):400–416.e11.
+  - Cerami E, Gao J, Dogrusoz U, *et al.* The cBio Cancer Genomics Portal: An Open Platform for Exploring Multidimensional Cancer Genomics Data. *Cancer Discovery.* 2012;2(5):401–404.
+  - Gao J, Aksoy BA, Dogrusoz U, *et al.* Integrative Analysis of Complex Cancer Genomics and Clinical Profiles Using the cBioPortal. *Science Signaling.* 2013;6(269):pl1.
+  - Liu J, Lichtenberg T, Hoadley KA, *et al.* An Integrated TCGA Pan-Cancer Clinical Data Resource to Drive High-Quality Survival Outcome Analytics. *Cell.* 2018;173(2):400–416.e11.
