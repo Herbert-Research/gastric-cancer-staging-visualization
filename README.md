@@ -9,9 +9,27 @@ Supporting analytics package for the proposed PhD dissertation **“Prospective 
   - **Demonstrates** a validation-first workflow (schema enforcement → harmonisation → visualization) scalable to future KLASS video and telemetry streams.
   - **Exports** audited, publication-ready figures (`*.png`) designed for committee packets and multi-disciplinary review slide decks.
 
+## Central Hypothesis
+
+**Station-specific lymphadenectomy guidance, calibrated against TCGA survival baselines, can reduce the observed survival gradient between early-stage (Stage IA: 24.3 months median OS) and advanced-stage (Stage IV: 8.6 months median OS) gastric cancer by optimizing nodal harvest in intermediate-risk T3/N1-N2 populations.**
+
+This repository provides the calibration evidence for Aim 1: establishing quantitative survival targets that prospective KLASS guidance must meet or exceed.
+
 ## Scientific Context and Objectives
 
-Before station-specific lymphadenectomy guidance can be prospectively deployed, it must be calibrated against well-characterised retrospective baselines. This codebase establishes those baselines by quantifying disease burden heterogeneity (via TNM heatmaps) and documenting existing outcome gradients (via Kaplan-Meier and median OS analysis). The material is curated for review committees that expect clearly articulated hypotheses, transparent data lineage, and rigorous, open methods.
+This repository represents **Phase 1: Retrospective Calibration** of a multi-phase dissertation project. The complete research arc is:
+
+| Phase | Data Source | Objective |
+|-------|-------------|-----------|
+| 1 (Current) | TCGA STAD | Establish survival baselines and identify high-burden T/N combinations requiring guidance |
+| 2 | KLASS Video Archives | Develop station-specific risk models from surgical annotations |
+| 3 | Prospective KLASS | Validate guidance system against contemporary outcomes |
+
+Before station-specific lymphadenectomy guidance can be prospectively deployed, it must be calibrated against well-characterised retrospective baselines. This codebase establishes those baselines by:
+
+1. Quantifying disease burden heterogeneity via TNM heatmaps, identifying T3/N1 and T3/N2 as dominant populations requiring optimized nodal harvest
+2. Documenting existing outcome gradients via Kaplan-Meier analysis, establishing the 3-fold survival differential (Stage IA: 24 mo vs Stage IV: 9 mo) that guidance must address
+3. Demonstrating methodological rigor transferable to KLASS integration
 
 ## Data Provenance and Governance
 
@@ -26,6 +44,19 @@ The core pipeline (`staging_visualization.py`) executes three synchronized phase
 1.  **Schema Validation** – Enforces strict concordancy between PanCanAtlas headers and expected AJCC fields, halting execution if critical metadata is absent.
 2.  **Data Harmonisation** – Standardises heterogeneous staging labels (e.g., "Stage IIIA" vs "Stage 3a") and survival endpoints without imputing missing records.
 3.  **Figure Generation** – Exports high-resolution panels visualizing disease burden and actuarial outcomes.
+
+Analytical pipeline: TCGA TSV -> schema check -> TNM harmonization -> survival extraction -> distribution + KM analyses -> publication figures.
+
+```mermaid
+flowchart TD
+    A[TCGA STAD TSV] --> B[Schema Validation]
+    B --> C[TNM Harmonization]
+    C --> D[Survival Extraction]
+    D --> E[Distribution Figures]
+    D --> F[KM Analysis]
+    E --> G[Publication Figures]
+    F --> G
+```
 
 ## Example Output
 
@@ -62,9 +93,24 @@ Stage IIIB | Median OS: 16.2 mo | Events: 44% | n=63
 Stage IIIC | Median OS: 11.7 mo | Events: 46% | n=39
   Stage IV | Median OS: 8.6 mo | Events: 61% | n=44
 
+Log-Rank Test (Omnibus):
+  Chi-square: 33.09
+  p-value: 0.0001
+  df: 8
+  Pairwise comparisons (p-values):
+    Stage IIB vs Stage IV: 0.0003 (chi^2=13.11)
+    Stage IA vs Stage IV: 0.0007 (chi^2=11.37)
+    Stage II vs Stage IV: 0.0008 (chi^2=11.36)
+    Stage IB vs Stage IV: 0.0008 (chi^2=11.25)
+    Stage IIA vs Stage IV: 0.0015 (chi^2=10.10)
+    Stage IA vs Stage IIIC: 0.0034 (chi^2=8.58)
+    ... 30 additional comparisons not shown
+
 ```
 
 This output quantifies clear survival gradients—from 24.3 months in Stage IA down to 8.6 months in Stage IV—precisely the outcome heterogeneity that future station-specific guidance must address.
+
+*Note: Patient counts in survival summaries reflect complete-case analysis requiring both AJCC stage and overall survival annotations. Staging distribution totals (n=421) include all patients with AJCC staging regardless of survival data availability.*
 
 ## Generated Figures
 
@@ -77,6 +123,13 @@ This output quantifies clear survival gradients—from 24.3 months in Stage IA d
 
   - `os_by_stage.png` – Median overall survival bars annotated with event rates and cohort sizes, underscoring the outcome gradient Aim 1 seeks to tighten.
   - `km_by_stage.png` – Kaplan–Meier survival curves stratified by AJCC stage, visualizing the full hazard trajectory for sufficiently powered subgroups.
+  - `statistical_summary.txt` – Console-style summary including log-rank omnibus and leading pairwise comparisons for reviewers who need quantitative significance tests.
+  - `rmst_by_stage.csv` – Optional table of restricted mean survival time (RMST) by stage when `--rmst-months` is provided (e.g., 60 months for a 5-year horizon).
+
+**RMST (Clinically Oriented Supplement)**
+
+  - RMST offers a censoring-robust average survival time over a fixed horizon; enable it with `--rmst-months 60` to mirror 5-year endpoints commonly cited in surgical oncology.
+  - Example (TCGA STAD, 60-month horizon): Stage IA ≈ 54.8 months vs Stage IV ≈ 23.1 months (n=15 vs n=44), quantifying the survival burden that station-specific lymphadenectomy guidance aims to reduce. Underpowered strata (e.g., Stage I, Stage III) are automatically excluded.
 
 ## Usage
 
@@ -102,6 +155,9 @@ python staging_visualization.py --data data/local_registry.tsv --output-dir repo
 
 # Adjust minimum cohort size for Kaplan-Meier curves (default: 15)
 python staging_visualization.py --km-min-group 20
+
+# Add restricted mean survival time (RMST) summary at a 5-year (60 month) horizon
+python staging_visualization.py --rmst-months 60
 ```
 
 ## Software Requirements
@@ -129,9 +185,39 @@ This safeguard allows screening committees to verify dataset compatibility witho
   - **AJCC Groupings:** Staging labels follow those embedded within the TCGA clinical records; stages are harmonised but not re-derived from raw TNM values.
   - **Survival Endpoint:** Summaries reflect overall survival (OS); disease-free intervals were not uniformly available in the 2018 PanCanAtlas release used for this pilot.
 
+### Interpreting Survival Estimates
+
+Reviewers may note apparent non-monotonic patterns in median OS across stages (e.g., Stage IIIB ≈ Stage IB). This is methodologically expected:
+
+- **Differential Censoring:** Stages with lower event rates (e.g., IB at 26%) have more censored observations, biasing median estimates compared to stages with higher event rates (e.g., IIIB at 44%).
+
+- **Small Sample Variability:** With n=39 for both IB and IIIC, stochastic variation can produce overlapping point estimates even when true underlying distributions differ.
+
+- **Confidence Interval Overlap:** The Kaplan-Meier figure (`km_by_stage.png`) demonstrates substantial confidence band overlap between adjacent stages, consistent with expected statistical uncertainty.
+
+For stage-comparison inferences, we recommend examining the full Kaplan-Meier curves with confidence intervals rather than point estimates alone.
+
+### Known Limitations
+
+This analysis inherits several well-documented limitations of TCGA cohorts:
+
+- **Survivorship Bias:** Patients must survive from diagnosis through specimen collection and processing, systematically excluding rapid progressors who may represent the most aggressive disease phenotypes.
+
+- **Tertiary Center Bias:** TCGA participating institutions are predominantly academic medical centers with specialized oncology programs, potentially reflecting different treatment patterns than community practice settings.
+
+- **Specimen Quality Selection:** Genomic analyses require high-quality specimens with adequate tumor cellularity, which may correlate with clinical features not captured in staging annotations.
+
+- **Temporal Heterogeneity:** Cases span multiple years of accrual during which treatment paradigms evolved, particularly regarding perioperative chemotherapy adoption.
+
+These limitations are explicitly acknowledged to contextualize the calibration targets established by this analysis. Prospective KLASS validation will address generalizability through multi-center design and contemporary treatment protocols.
+
 ## Repository Stewardship
 
 Author: **Maximilian Herbert Dressler**
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgement
 

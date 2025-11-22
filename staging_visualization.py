@@ -9,6 +9,11 @@ support KLASS-standardised workflow discussions.
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
+
+# Configure matplotlib cache directory to suppress warnings
+os.environ['MPLCONFIGDIR'] = os.path.join(tempfile.gettempdir(), '.matplotlib_cache')
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -17,9 +22,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from lifelines import KaplanMeierFitter
+from lifelines.statistics import multivariate_logrank_test, pairwise_logrank_test
+from lifelines.utils import restricted_mean_survival_time
 
 sns.set_style("whitegrid")
-plt.rcParams["figure.figsize"] = (14, 8)
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_PATH = BASE_DIR / "data" / "tcga_2018_clinical_data.tsv"
@@ -85,6 +91,7 @@ FIG_STAGE_DISTRIBUTION = "tnm_staging_distribution.png"
 FIG_TN_HEATMAP = "tn_heatmap.png"
 FIG_SURVIVAL = "os_by_stage.png"
 FIG_KM_SURVIVAL = "km_by_stage.png"
+FILE_RMST_BY_STAGE = "rmst_by_stage.csv"
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,6 +115,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=15,
         help="Minimum patients per stage required to draw a Kaplan-Meier curve (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--rmst-months",
+        type=float,
+        default=None,
+        help="Optional time horizon (months) to compute restricted mean survival time by stage (default: disabled).",
     )
     return parser.parse_args()
 
@@ -334,9 +347,121 @@ def build_survival_summary(df: pd.DataFrame) -> pd.DataFrame:
     return summary
 
 
-def plot_survival_by_stage(summary: pd.DataFrame, output_path: Path) -> bool:
+def compute_logrank_statistics(
+    df: pd.DataFrame, min_group_size: int = 15
+) -> Optional[dict]:
+    """
+    Compute omnibus and pairwise log-rank statistics across AJCC stages.
+    Filters out underpowered stages to avoid unstable estimates.
+    """
+    km_df = df.dropna(subset=["overall_survival_months", "ajcc_stage"]).copy()
+    if km_df.empty:
+        return None
+
+    stage_counts = km_df["ajcc_stage"].value_counts()
+    valid_stages = stage_counts[stage_counts >= min_group_size].index
+    km_df = km_df[km_df["ajcc_stage"].isin(valid_stages)]
+
+    if len(valid_stages) < 2:
+        return None
+
+    omnibus = multivariate_logrank_test(
+        km_df["overall_survival_months"],
+        km_df["ajcc_stage"],
+        km_df["survival_event"],
+    )
+
+    pairwise_summary = pairwise_logrank_test(
+        km_df["overall_survival_months"],
+        km_df["ajcc_stage"],
+        event_observed=km_df["survival_event"],
+    ).summary
+
+    pairwise_results = []
+    for (stage_a, stage_b), row in pairwise_summary.iterrows():
+        pairwise_results.append(
+            {
+                "stages": (stage_a, stage_b),
+                "test_statistic": float(row["test_statistic"]),
+                "p_value": float(row["p"]),
+            }
+        )
+    pairwise_results.sort(key=lambda item: item["p_value"])
+
+    return {
+        "test_statistic": omnibus.test_statistic,
+        "p_value": omnibus.p_value,
+        "degrees_freedom": len(valid_stages) - 1,
+        "stages_compared": list(valid_stages),
+        "pairwise_results": pairwise_results,
+    }
+
+
+def compute_rmst_by_stage(
+    df: pd.DataFrame, horizon_months: float, min_group_size: int = 15
+) -> pd.DataFrame:
+    """
+    Compute restricted mean survival time (RMST) for each AJCC stage that meets the
+    minimum group size threshold. RMST integrates the Kaplan-Meier survival curve
+    up to the supplied time horizon to provide a censoring-robust summary metric.
+    """
+    if horizon_months <= 0:
+        raise ValueError("rmst_months must be a positive value.")
+
+    km_df = df.dropna(subset=["overall_survival_months", "ajcc_stage"]).copy()
+    if km_df.empty:
+        return pd.DataFrame()
+
+    ordered_stages = [
+        stage for stage in STAGE_ORDER if stage in km_df["ajcc_stage"].unique()
+    ] + [stage for stage in km_df["ajcc_stage"].unique() if stage not in STAGE_ORDER]
+
+    kmf = KaplanMeierFitter()
+    results: list[dict[str, float | int | str]] = []
+
+    for stage in ordered_stages:
+        stage_df = km_df[km_df["ajcc_stage"] == stage]
+        if len(stage_df) < min_group_size:
+            continue
+
+        kmf.fit(
+            durations=stage_df["overall_survival_months"],
+            event_observed=stage_df["survival_event"],
+        )
+        rmst_value = restricted_mean_survival_time(kmf, t=horizon_months)
+        results.append(
+            {
+                "ajcc_stage": stage,
+                "rmst_months": float(rmst_value),
+                "patient_count": int(len(stage_df)),
+                "events": int(stage_df["survival_event"].sum()),
+            }
+        )
+
+    return pd.DataFrame(results)
+
+
+def plot_survival_by_stage(
+    summary: pd.DataFrame, output_path: Path, min_group_size: int = 15
+) -> bool:
     if summary.empty:
         return False
+
+    excluded_stages = summary[summary["patient_count"] < min_group_size].index.tolist()
+    summary = summary[summary["patient_count"] >= min_group_size].copy()
+    if summary.empty:
+        if excluded_stages:
+            print(
+                f"Skipped {output_path.name}: no stages met min_group_size="
+                f"{min_group_size} (excluded: {', '.join(excluded_stages)})"
+            )
+        return False
+
+    if excluded_stages:
+        print(
+            f"Excluded stages from survival by stage plot "
+            f"(min_group_size={min_group_size}): {', '.join(excluded_stages)}"
+        )
 
     fig, ax = plt.subplots(figsize=(12, 7))
 
@@ -418,31 +543,80 @@ def plot_kaplan_meier(
     return True
 
 
-def print_summary(stage_counts: pd.Series, survival_summary: pd.DataFrame) -> None:
+def print_summary(
+    stage_counts: pd.Series,
+    survival_summary: pd.DataFrame,
+    logrank_results: Optional[dict] = None,
+    rmst_summary: Optional[pd.DataFrame] = None,
+    rmst_horizon: Optional[float] = None,
+) -> str:
+    lines: list[str] = [
+        "Gastric Cancer Staging Visualization",
+        "=" * 60,
+    ]
+
     if stage_counts.empty:
-        print("Gastric Cancer Staging Visualization")
-        print("=" * 60)
-        print("No AJCC staging data available in the supplied cohort.")
-        return
+        lines.append("No AJCC staging data available in the supplied cohort.")
+        text = "\n".join(lines)
+        print(text)
+        return text
 
     total = int(stage_counts.sum())
-    print("Gastric Cancer Staging Visualization")
-    print("=" * 60)
-    print(f"Total patients with AJCC staging: {total}")
+    lines.append(f"Total patients with AJCC staging: {total}")
     for stage, count in stage_counts.items():
         percent = (count / total * 100) if total else 0
-        print(f"{stage:>10}: {int(count)} patients ({percent:.1f}%)")
+        lines.append(f"{stage:>10}: {int(count)} patients ({percent:.1f}%)")
 
     if survival_summary.empty:
-        return
+        text = "\n".join(lines)
+        print(text)
+        return text
 
-    print("\nOverall Survival Highlights:")
-    print("-" * 60)
+    lines.append("")
+    lines.append("Overall Survival Highlights:")
+    lines.append("-" * 60)
     for stage, row in survival_summary.iterrows():
-        print(
+        lines.append(
             f"{stage:>10} | Median OS: {row['median_os']:.1f} mo | "
             f"Events: {row['event_rate_pct']:.0f}% | n={int(row['patient_count'])}"
         )
+
+    if logrank_results:
+        lines.append("")
+        lines.append("Log-Rank Test (Omnibus):")
+        lines.append(f"  Chi-square: {logrank_results['test_statistic']:.2f}")
+        lines.append(f"  p-value: {logrank_results['p_value']:.4f}")
+        lines.append(f"  df: {logrank_results['degrees_freedom']}")
+
+        pairwise_results = logrank_results.get("pairwise_results") or []
+        if pairwise_results:
+            lines.append("  Pairwise comparisons (p-values):")
+            max_pairs = 6
+            for pair_result in pairwise_results[:max_pairs]:
+                stage_a, stage_b = pair_result["stages"]
+                lines.append(
+                    f"    {stage_a} vs {stage_b}: {pair_result['p_value']:.4f} "
+                    f"(chi^2={pair_result['test_statistic']:.2f})"
+                )
+            remaining = len(pairwise_results) - max_pairs
+            if remaining > 0:
+                lines.append(f"    ... {remaining} additional comparisons not shown")
+
+    if rmst_summary is not None and not rmst_summary.empty and rmst_horizon:
+        lines.append("")
+        lines.append(
+            f"Restricted Mean Survival Time (t={rmst_horizon:.1f} months):"
+        )
+        lines.append("-" * 60)
+        for _, row in rmst_summary.iterrows():
+            lines.append(
+                f"{row['ajcc_stage']:>10} | RMST: {row['rmst_months']:.1f} mo | "
+                f"Events: {int(row['events'])} | n={int(row['patient_count'])}"
+            )
+
+    text = "\n".join(lines)
+    print(text)
+    return text
 
 
 def main() -> None:
@@ -479,11 +653,14 @@ def main() -> None:
 
     survival_summary = build_survival_summary(df)
     survival_path = figures_dir / FIG_SURVIVAL
-    if plot_survival_by_stage(survival_summary, survival_path):
+    if plot_survival_by_stage(
+        survival_summary, survival_path, min_group_size=args.km_min_group
+    ):
         generated_files.append(survival_path)
     else:
         skipped_outputs.append(
-            f"{survival_path} (insufficient AJCC stage + survival duration data)"
+            f"{survival_path} (insufficient AJCC stage + survival duration data or "
+            f"no stages met min_group_size={args.km_min_group})"
         )
 
     km_path = figures_dir / FIG_KM_SURVIVAL
@@ -494,7 +671,28 @@ def main() -> None:
             f"{km_path} (no stages met km_min_group={args.km_min_group})"
         )
 
-    print_summary(stage_counts, survival_summary)
+    logrank_results = compute_logrank_statistics(df, min_group_size=args.km_min_group)
+    rmst_summary: Optional[pd.DataFrame] = None
+    if args.rmst_months is not None:
+        rmst_summary = compute_rmst_by_stage(
+            df, horizon_months=args.rmst_months, min_group_size=args.km_min_group
+        )
+        if not rmst_summary.empty:
+            rmst_output_path = figures_dir / FILE_RMST_BY_STAGE
+            rmst_summary.to_csv(rmst_output_path, index=False)
+            generated_files.append(rmst_output_path)
+        else:
+            skipped_outputs.append(
+                f"{figures_dir / FILE_RMST_BY_STAGE} (insufficient AJCC stage + survival duration data "
+                f"or no stages met min_group_size={args.km_min_group} for RMST)"
+            )
+
+    summary_text = print_summary(
+        stage_counts, survival_summary, logrank_results, rmst_summary, args.rmst_months
+    )
+    stats_output_path = figures_dir / "statistical_summary.txt"
+    stats_output_path.write_text(summary_text + "\n", encoding="utf-8")
+    generated_files.append(stats_output_path)
     print("\nGenerated files:")
     if generated_files:
         for path in generated_files:
