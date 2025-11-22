@@ -1,0 +1,66 @@
+file_settings:
+  default_data_path: data/tcga_2018_clinical_data.tsv
+  default_output_dir: .
+  figure_dpi: 300
+
+column_mapping:
+  Patient ID: patient_id
+  Sample ID: sample_id
+  Neoplasm Disease Stage American Joint Committee on Cancer Code: ajcc_stage
+  American Joint Committee on Cancer Tumor Stage Code: t_stage
+  Neoplasm Disease Lymph Node Stage American Joint Committee on Cancer Code: n_stage
+  American Joint Committee on Cancer Metastasis Stage Code: m_stage
+  Overall Survival (Months): overall_survival_months
+  Overall Survival Status: overall_survival_status
+
+stage_ordering:
+  ajcc_stages:
+    - Stage 0
+    - Stage I
+    - Stage IA
+    - Stage IB
+    - Stage II
+    - Stage IIA
+    - Stage IIB
+    - Stage III
+    - Stage IIIA
+    - Stage IIIB
+    - Stage IIIC
+    - Stage IVA
+    - Stage IVB
+    - Stage IV
+  t_stages:
+    - Tis
+    - T1
+    - T1A
+    - T1B
+    - T2
+    - T2A
+    - T2B
+    - T3
+    - T4
+    - T4A
+    - T4B
+    - TX
+  n_stages:
+    - N0
+    - N1
+    - N2
+    - N3
+    - N3A
+    - N3B
+    - NX
+  m_stages:
+    - M0
+    - M1
+    - MX
+
+visualization:
+  km_min_group_size: 15
+  filenames:
+    stage_distribution: tnm_staging_distribution.png
+    tn_heatmap: tn_heatmap.png
+    survival_by_stage: os_by_stage.png
+    km_by_stage: km_by_stage.png
+    rmst_by_stage: rmst_by_stage.csv
+    statistical_summary: statistical_summary.txt
