@@ -17,7 +17,7 @@ import tempfile
 # Configure matplotlib cache directory to suppress warnings
 os.environ['MPLCONFIGDIR'] = os.path.join(tempfile.gettempdir(), '.matplotlib_cache')
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, TypedDict, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -105,6 +105,41 @@ DEFAULT_CONFIG = {
     },
 }
 
+class FileSettings(TypedDict):
+    default_data_path: Path
+    default_output_dir: Path
+    figure_dpi: int
+
+
+class StageOrdering(TypedDict):
+    ajcc_stages: list[str]
+    t_stages: list[str]
+    n_stages: list[str]
+    m_stages: list[str]
+
+
+class VisualizationFilenames(TypedDict):
+    stage_distribution: str
+    tn_heatmap: str
+    survival_by_stage: str
+    km_by_stage: str
+    rmst_by_stage: str
+    statistical_summary: str
+
+
+class Visualization(TypedDict):
+    km_min_group_size: int
+    filenames: VisualizationFilenames
+
+
+class Config(TypedDict):
+    file_settings: FileSettings
+    column_mapping: dict[str, str]
+    reverse_column_mapping: dict[str, str]
+    required_columns: tuple[str, ...]
+    stage_ordering: StageOrdering
+    visualization: Visualization
+
 
 def deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = copy.deepcopy(base)
@@ -123,7 +158,7 @@ def resolve_path(path_value: str | Path, relative_to_base: bool = True) -> Path:
     return (BASE_DIR / path) if relative_to_base else path.resolve()
 
 
-def load_config(config_path: Path) -> dict[str, Any]:
+def load_config(config_path: Path) -> Config:
     config_path = resolve_path(config_path, relative_to_base=False)
     base_config = copy.deepcopy(DEFAULT_CONFIG)
     if not config_path.exists():
@@ -166,19 +201,22 @@ def load_config(config_path: Path) -> dict[str, Any]:
             file=sys.stderr,
         )
         raise SystemExit(1)
+    base_file_settings = cast(dict[str, Any], base_config["file_settings"])
+    default_data_path = file_settings.get(
+        "default_data_path", base_file_settings["default_data_path"]
+    )
     merged["file_settings"]["default_data_path"] = resolve_path(
-        file_settings.get(
-            "default_data_path", base_config["file_settings"]["default_data_path"]
-        )
+        str(default_data_path)
+    )
+    default_output_dir = file_settings.get(
+        "default_output_dir", base_file_settings["default_output_dir"]
     )
     merged["file_settings"]["default_output_dir"] = resolve_path(
-        file_settings.get(
-            "default_output_dir", base_config["file_settings"]["default_output_dir"]
-        )
+        str(default_output_dir)
     )
-    merged["file_settings"]["figure_dpi"] = int(
-        file_settings.get("figure_dpi", base_config["file_settings"]["figure_dpi"])
-    )
+    figure_dpi = file_settings.get("figure_dpi", base_file_settings["figure_dpi"])
+    if figure_dpi is not None:
+        merged["file_settings"]["figure_dpi"] = int(figure_dpi)
 
     column_mapping = merged.get("column_mapping") or {}
     if not isinstance(column_mapping, dict):
@@ -208,21 +246,18 @@ def load_config(config_path: Path) -> dict[str, Any]:
             file=sys.stderr,
         )
         raise SystemExit(1)
+    base_stage_ordering = cast(dict[str, Any], base_config["stage_ordering"])
+    ajcc_stages_value = stage_ordering.get(
+        "ajcc_stages", base_stage_ordering["ajcc_stages"]
+    )
+    t_stages_value = stage_ordering.get("t_stages", base_stage_ordering["t_stages"])
+    n_stages_value = stage_ordering.get("n_stages", base_stage_ordering["n_stages"])
+    m_stages_value = stage_ordering.get("m_stages", base_stage_ordering["m_stages"])
     merged["stage_ordering"] = {
-        "ajcc_stages": list(
-            stage_ordering.get(
-                "ajcc_stages", base_config["stage_ordering"]["ajcc_stages"]
-            )
-        ),
-        "t_stages": list(
-            stage_ordering.get("t_stages", base_config["stage_ordering"]["t_stages"])
-        ),
-        "n_stages": list(
-            stage_ordering.get("n_stages", base_config["stage_ordering"]["n_stages"])
-        ),
-        "m_stages": list(
-            stage_ordering.get("m_stages", base_config["stage_ordering"]["m_stages"])
-        ),
+        "ajcc_stages": list(ajcc_stages_value) if ajcc_stages_value else [],
+        "t_stages": list(t_stages_value) if t_stages_value else [],
+        "n_stages": list(n_stages_value) if n_stages_value else [],
+        "m_stages": list(m_stages_value) if m_stages_value else [],
     }
 
     visualization = merged.get("visualization") or {}
@@ -232,17 +267,16 @@ def load_config(config_path: Path) -> dict[str, Any]:
             file=sys.stderr,
         )
         raise SystemExit(1)
+    base_visualization = cast(dict[str, Any], base_config["visualization"])
+    km_min_group_size_value = visualization.get(
+        "km_min_group_size", base_visualization["km_min_group_size"]
+    )
+    filenames_value = visualization.get("filenames", base_visualization["filenames"])
     merged["visualization"] = {
-        "km_min_group_size": int(
-            visualization.get(
-                "km_min_group_size", base_config["visualization"]["km_min_group_size"]
-            )
-        ),
-        "filenames": dict(
-            visualization.get("filenames", base_config["visualization"]["filenames"])
-        ),
+        "km_min_group_size": int(km_min_group_size_value) if km_min_group_size_value is not None else 0,
+        "filenames": dict(filenames_value) if isinstance(filenames_value, dict) else {},
     }
-    return merged
+    return cast(Config, merged)
 
 
 def parse_args() -> argparse.Namespace:
@@ -392,7 +426,7 @@ def validate_required_columns(
     )
 
 
-def preprocess(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+def preprocess(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     column_map = config["column_mapping"]
     reverse_column_map = config["reverse_column_mapping"]
     required_columns = config["required_columns"]
@@ -570,7 +604,7 @@ def compute_logrank_statistics(
         event_observed=km_df["survival_event"],
     ).summary
 
-    pairwise_results = []
+    pairwise_results: list[dict[str, Any]] = []
     for (stage_a, stage_b), row in pairwise_summary.iterrows():
         pairwise_results.append(
             {
@@ -579,7 +613,7 @@ def compute_logrank_statistics(
                 "p_value": float(row["p"]),
             }
         )
-    pairwise_results.sort(key=lambda item: item["p_value"])
+    pairwise_results.sort(key=lambda item: cast(float, item["p_value"]))
 
     return {
         "test_statistic": omnibus.test_statistic,
@@ -826,7 +860,7 @@ def print_summary(
 
 def main() -> None:
     args = parse_args()
-    config = load_config(args.config)
+    config: Config = load_config(args.config)
     file_settings = config["file_settings"]
     stage_ordering = config["stage_ordering"]
     visualization = config["visualization"]

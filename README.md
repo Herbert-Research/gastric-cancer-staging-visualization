@@ -166,6 +166,25 @@ python staging_visualization.py --rmst-months 60
   - Core dependencies: `pandas`, `numpy`, `matplotlib`, `seaborn`, `lifelines` (for survival statistics).
   - See `requirements.txt` for pinned versions used in validation.
 
+## Quality Assurance
+
+This repository implements rigorous software engineering practices appropriate for medical research applications:
+
+  - **Static Type Checking:** Full `mypy` compliance with strict type annotations, including TypedDict specifications for configuration contracts. This catches configuration key typos and type mismatches before runtime, reducing the risk of analysis errors.
+  - **Automated Testing:** Unit test suite (`tests/test_core.py`) validates core functionality including configuration loading, data harmonization, and survival analysis logic.
+  - **Continuous Integration:** GitHub Actions workflow runs type checking and tests on every commit, ensuring code quality is maintained throughout development.
+
+These measures demonstrate attention to reproducibility and correctness—critical considerations for computational methods intended to inform clinical decision-making.
+
+Run quality checks locally:
+```bash
+# Type checking
+python -m mypy --config-file mypy.ini
+
+# Unit tests
+python -m pytest
+```
+
 ## Input Validation Schema
 
 The script enforces data integrity by halting with a descriptive error if required headers are absent:
