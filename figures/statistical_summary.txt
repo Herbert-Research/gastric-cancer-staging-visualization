@@ -15,39 +15,28 @@ Stage IIIC: 39 patients (9.3%)
 
 Overall Survival Highlights:
 ------------------------------------------------------------
-   Stage I | Median OS: 12.5 mo | Events: 0% | n=2
-  Stage IA | Median OS: 24.3 mo | Events: 13% | n=15
-  Stage IB | Median OS: 16.7 mo | Events: 26% | n=39
-  Stage II | Median OS: 13.3 mo | Events: 30% | n=33
- Stage IIA | Median OS: 14.0 mo | Events: 24% | n=41
- Stage IIB | Median OS: 15.8 mo | Events: 29% | n=56
- Stage III | Median OS: 6.6 mo | Events: 100% | n=3
-Stage IIIA | Median OS: 14.3 mo | Events: 46% | n=81
-Stage IIIB | Median OS: 16.2 mo | Events: 44% | n=63
-Stage IIIC | Median OS: 11.7 mo | Events: 46% | n=39
-  Stage IV | Median OS: 8.6 mo | Events: 61% | n=44
+   Stage I | Median OS: NR mo (95% CI: NR) | Events: 0% | n=2
+  Stage IA | Median OS: 72.2 mo (95% CI: 29.0–72.2) | Events: 13% | n=15
+  Stage IB | Median OS: NR mo (95% CI: NR) | Events: 26% | n=39
+  Stage II | Median OS: 55.4 mo (95% CI: NR) | Events: 30% | n=33
+ Stage IIA | Median OS: NR mo (95% CI: NR) | Events: 24% | n=41
+ Stage IIB | Median OS: NR mo (95% CI: NR) | Events: 29% | n=56
+ Stage III | Median OS: 6.6 mo (95% CI: 6.1–14.4) | Events: 100% | n=3
+Stage IIIA | Median OS: 25.7 mo (95% CI: 18.2–57.4) | Events: 46% | n=81
+Stage IIIB | Median OS: 26.3 mo (95% CI: NR) | Events: 44% | n=63
+Stage IIIC | Median OS: 16.3 mo (95% CI: NR) | Events: 46% | n=39
+  Stage IV | Median OS: 12.0 mo (95% CI: 7.1–20.8) | Events: 61% | n=44
 
 Log-Rank Test (Omnibus):
   Chi-square: 33.09
   p-value: 0.0001
   df: 8
   Pairwise comparisons (p-values):
-    Stage IIB vs Stage IV: 0.0003 (chi^2=13.11)
-    Stage IA vs Stage IV: 0.0007 (chi^2=11.37)
-    Stage II vs Stage IV: 0.0008 (chi^2=11.36)
-    Stage IB vs Stage IV: 0.0008 (chi^2=11.25)
-    Stage IIA vs Stage IV: 0.0015 (chi^2=10.10)
-    Stage IA vs Stage IIIC: 0.0034 (chi^2=8.58)
+  Note: Adjusted using Benjamini-Hochberg FDR
+    Stage IA vs Stage IV: p=0.0007 (adj. p=0.0072, chi^2=11.37)
+    Stage IB vs Stage IV: p=0.0008 (adj. p=0.0072, chi^2=11.25)
+    Stage II vs Stage IV: p=0.0008 (adj. p=0.0072, chi^2=11.36)
+    Stage IIB vs Stage IV: p=0.0003 (adj. p=0.0072, chi^2=13.11)
+    Stage IIA vs Stage IV: p=0.0015 (adj. p=0.0107, chi^2=10.10)
+    Stage IA vs Stage IIIC: p=0.0034 (adj. p=0.0204, chi^2=8.58)
     ... 30 additional comparisons not shown
-
-Restricted Mean Survival Time (t=60.0 months):
-------------------------------------------------------------
-  Stage IA | RMST: 54.8 mo | Events: 2 | n=15
-  Stage IB | RMST: 44.5 mo | Events: 10 | n=39
-  Stage II | RMST: 43.8 mo | Events: 10 | n=33
- Stage IIA | RMST: 41.6 mo | Events: 10 | n=41
- Stage IIB | RMST: 42.8 mo | Events: 16 | n=56
-Stage IIIA | RMST: 32.7 mo | Events: 37 | n=81
-Stage IIIB | RMST: 33.5 mo | Events: 28 | n=63
-Stage IIIC | RMST: 30.1 mo | Events: 18 | n=39
-  Stage IV | RMST: 23.1 mo | Events: 27 | n=44

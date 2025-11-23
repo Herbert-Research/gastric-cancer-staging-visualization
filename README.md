@@ -58,6 +58,35 @@ flowchart TD
     F --> G
 ```
 
+## Statistical Methods
+
+### Minimum Group Size
+
+Stages with fewer than 15 patients are excluded from Kaplan-Meier
+analyses and log-rank comparisons. This threshold balances:
+
+1. **Statistical stability**: With the cohort's ~40% event rate,
+   n=15 provides ~6 expected events per group
+2. **Stage inclusion**: Higher thresholds would exclude clinically
+   relevant stages (e.g., Stage IA with n=15)
+3. **Precedent**: Consistent with TCGA PanCanAtlas conventions
+
+Users may override this threshold with `--km-min-group`.
+
+### Multiple Testing Correction
+
+Pairwise log-rank comparisons are adjusted using the Benjamini-Hochberg
+False Discovery Rate (FDR) procedure. This method controls the expected
+proportion of false positives among rejected hypotheses, providing a
+balance between Type I error control and statistical power appropriate
+for exploratory survival analyses. The console summary surfaces both raw
+and FDR-adjusted pairwise p-values so reviewers can gauge effect strength
+while accounting for multiple comparisons.
+
+Reference: Benjamini Y, Hochberg Y. Controlling the false discovery rate:
+a practical and powerful approach to multiple testing. J R Stat Soc B.
+1995;57(1):289-300.
+
 ## Example Output
 
 Running the default configuration produces clinically-interpretable summaries demonstrating the pipeline's analytical rigor:

@@ -23,10 +23,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import pandera.pandas as pa
 from lifelines import KaplanMeierFitter
 from lifelines.statistics import multivariate_logrank_test, pairwise_logrank_test
-from lifelines.utils import restricted_mean_survival_time
+from lifelines.utils import median_survival_times, restricted_mean_survival_time
+from statsmodels.stats.multitest import multipletests
 import yaml
+from schemas import PreprocessedCohortSchema
 
 sns.set_style("whitegrid")
 
@@ -457,6 +460,13 @@ def preprocess(df: pd.DataFrame, config: Config) -> pd.DataFrame:
         df["overall_survival_status"] = pd.Series(
             np.nan, index=df.index, dtype="object"
         )
+
+    try:
+        df = PreprocessedCohortSchema.validate(df)
+    except pa.errors.SchemaError as exc:
+        print(f"Data validation failed: {exc}", file=sys.stderr)
+        raise ValueError(f"Cohort data failed schema validation: {exc}") from exc
+
     return df
 
 
@@ -556,16 +566,38 @@ def build_survival_summary(
     if survival.empty:
         return pd.DataFrame()
 
-    summary = (
-        survival.groupby("ajcc_stage")
-        .agg(
-            median_os=("overall_survival_months", "median"),
-            patient_count=("patient_id", "count"),
-            event_rate=("survival_event", "mean"),
-        )
-        .dropna()
-    )
+    kmf = KaplanMeierFitter()
+    results: list[dict[str, float | int | str]] = []
 
+    for stage in survival["ajcc_stage"].unique():
+        stage_df = survival[survival["ajcc_stage"] == stage]
+        kmf.fit(
+            durations=stage_df["overall_survival_months"],
+            event_observed=stage_df["survival_event"],
+        )
+
+        median_os = kmf.median_survival_time_
+        ci = median_survival_times(kmf.confidence_interval_)
+        median_os_value = (
+            float(median_os) if median_os is not None and np.isfinite(median_os) else np.nan
+        )
+        ci_lower = ci.iloc[0, 0] if not ci.empty else np.nan
+        ci_upper = ci.iloc[0, 1] if not ci.empty else np.nan
+        ci_lower_value = float(ci_lower) if np.isfinite(ci_lower) else np.nan
+        ci_upper_value = float(ci_upper) if np.isfinite(ci_upper) else np.nan
+
+        results.append(
+            {
+                "ajcc_stage": stage,
+                "median_os": median_os_value,
+                "median_os_ci_lower": ci_lower_value,
+                "median_os_ci_upper": ci_upper_value,
+                "patient_count": len(stage_df),
+                "event_rate": stage_df["survival_event"].mean(),
+            }
+        )
+
+    summary = pd.DataFrame(results).set_index("ajcc_stage")
     ordered_index = [
         stage for stage in stage_order if stage in summary.index
     ] + [stage for stage in summary.index if stage not in stage_order]
@@ -579,7 +611,8 @@ def compute_logrank_statistics(
 ) -> Optional[dict]:
     """
     Compute omnibus and pairwise log-rank statistics across AJCC stages.
-    Filters out underpowered stages to avoid unstable estimates.
+    Filters out underpowered stages to avoid unstable estimates. Pairwise p-values
+    are adjusted using Benjamini-Hochberg FDR correction.
     """
     km_df = df.dropna(subset=["overall_survival_months", "ajcc_stage"]).copy()
     if km_df.empty:
@@ -613,7 +646,18 @@ def compute_logrank_statistics(
                 "p_value": float(row["p"]),
             }
         )
-    pairwise_results.sort(key=lambda item: cast(float, item["p_value"]))
+    raw_pvalues = [result["p_value"] for result in pairwise_results]
+
+    if raw_pvalues:
+        _, adjusted_pvalues, _, _ = multipletests(
+            raw_pvalues, alpha=0.05, method="fdr_bh"
+        )
+        for result, adjusted_p in zip(pairwise_results, adjusted_pvalues):
+            result["p_value_adjusted"] = float(adjusted_p)
+
+    pairwise_results.sort(
+        key=lambda item: cast(float, item.get("p_value_adjusted", item["p_value"]))
+    )
 
     return {
         "test_statistic": omnibus.test_statistic,
@@ -621,7 +665,42 @@ def compute_logrank_statistics(
         "degrees_freedom": len(valid_stages) - 1,
         "stages_compared": list(valid_stages),
         "pairwise_results": pairwise_results,
+        "correction_method": "Benjamini-Hochberg FDR",
     }
+
+
+def bootstrap_rmst_ci(
+    durations: pd.Series,
+    events: pd.Series,
+    horizon: float,
+    n_bootstrap: int = 1000,
+    alpha: float = 0.05,
+) -> tuple[float, float, float]:
+    """Compute RMST with bootstrap confidence intervals."""
+    if horizon <= 0:
+        raise ValueError("horizon must be positive for RMST computation.")
+    if n_bootstrap <= 0:
+        raise ValueError("n_bootstrap must be a positive integer.")
+
+    n = len(durations)
+    if n == 0:
+        return (np.nan, np.nan, np.nan)
+
+    kmf = KaplanMeierFitter()
+    bootstrap_rmsts: list[float] = []
+
+    for _ in range(n_bootstrap):
+        idx = np.random.choice(n, size=n, replace=True)
+        kmf.fit(durations.iloc[idx], event_observed=events.iloc[idx])
+        bootstrap_rmsts.append(restricted_mean_survival_time(kmf, t=horizon))
+
+    kmf.fit(durations, event_observed=events)
+    point_est = restricted_mean_survival_time(kmf, t=horizon)
+
+    ci_lower = np.percentile(bootstrap_rmsts, 100 * alpha / 2)
+    ci_upper = np.percentile(bootstrap_rmsts, 100 * (1 - alpha / 2))
+
+    return point_est, ci_lower, ci_upper
 
 
 def compute_rmst_by_stage(
@@ -629,14 +708,18 @@ def compute_rmst_by_stage(
     horizon_months: float,
     stage_order: Iterable[str],
     min_group_size: int,
+    n_bootstrap: int = 1000,
 ) -> pd.DataFrame:
     """
     Compute restricted mean survival time (RMST) for each AJCC stage that meets the
     minimum group size threshold. RMST integrates the Kaplan-Meier survival curve
     up to the supplied time horizon to provide a censoring-robust summary metric.
+    Bootstrap resampling provides 95% confidence intervals to convey uncertainty.
     """
     if horizon_months <= 0:
         raise ValueError("rmst_months must be a positive value.")
+    if n_bootstrap <= 0:
+        raise ValueError("n_bootstrap must be a positive integer.")
 
     km_df = df.dropna(subset=["overall_survival_months", "ajcc_stage"]).copy()
     if km_df.empty:
@@ -650,7 +733,6 @@ def compute_rmst_by_stage(
         if stage not in stage_order
     ]
 
-    kmf = KaplanMeierFitter()
     results: list[dict[str, float | int | str]] = []
 
     for stage in ordered_stages:
@@ -658,15 +740,18 @@ def compute_rmst_by_stage(
         if len(stage_df) < min_group_size:
             continue
 
-        kmf.fit(
-            durations=stage_df["overall_survival_months"],
-            event_observed=stage_df["survival_event"],
+        rmst_value, ci_lower, ci_upper = bootstrap_rmst_ci(
+            stage_df["overall_survival_months"],
+            stage_df["survival_event"],
+            horizon=horizon_months,
+            n_bootstrap=n_bootstrap,
         )
-        rmst_value = restricted_mean_survival_time(kmf, t=horizon_months)
         results.append(
             {
                 "ajcc_stage": stage,
                 "rmst_months": float(rmst_value),
+                "rmst_ci_lower": float(ci_lower),
+                "rmst_ci_upper": float(ci_upper),
                 "patient_count": int(len(stage_df)),
                 "events": int(stage_df["survival_event"].sum()),
             }
@@ -815,8 +900,18 @@ def print_summary(
     lines.append("Overall Survival Highlights:")
     lines.append("-" * 60)
     for stage, row in survival_summary.iterrows():
+        ci_lower = row.get("median_os_ci_lower", np.nan)
+        ci_upper = row.get("median_os_ci_upper", np.nan)
+        median_os = row.get("median_os", np.nan)
+
+        median_str = f"{median_os:.1f}" if pd.notna(median_os) else "NR"
+        if pd.notna(ci_lower) and pd.notna(ci_upper):
+            ci_str = f" (95% CI: {ci_lower:.1f}–{ci_upper:.1f})"
+        else:
+            ci_str = " (95% CI: NR)"
+
         lines.append(
-            f"{stage:>10} | Median OS: {row['median_os']:.1f} mo | "
+            f"{stage:>10} | Median OS: {median_str} mo{ci_str} | "
             f"Events: {row['event_rate_pct']:.0f}% | n={int(row['patient_count'])}"
         )
 
@@ -830,12 +925,17 @@ def print_summary(
         pairwise_results = logrank_results.get("pairwise_results") or []
         if pairwise_results:
             lines.append("  Pairwise comparisons (p-values):")
+            lines.append(
+                f"  Note: Adjusted using {logrank_results.get('correction_method', 'N/A')}"
+            )
             max_pairs = 6
             for pair_result in pairwise_results[:max_pairs]:
                 stage_a, stage_b = pair_result["stages"]
+                raw_p = pair_result["p_value"]
+                adj_p = pair_result.get("p_value_adjusted", raw_p)
                 lines.append(
-                    f"    {stage_a} vs {stage_b}: {pair_result['p_value']:.4f} "
-                    f"(chi^2={pair_result['test_statistic']:.2f})"
+                    f"    {stage_a} vs {stage_b}: p={raw_p:.4f} "
+                    f"(adj. p={adj_p:.4f}, chi^2={pair_result['test_statistic']:.2f})"
                 )
             remaining = len(pairwise_results) - max_pairs
             if remaining > 0:
@@ -848,8 +948,16 @@ def print_summary(
         )
         lines.append("-" * 60)
         for _, row in rmst_summary.iterrows():
+            rmst_ci_lower = row.get("rmst_ci_lower", np.nan)
+            rmst_ci_upper = row.get("rmst_ci_upper", np.nan)
+            rmst_value = row.get("rmst_months", np.nan)
+            rmst_str = f"{rmst_value:.1f}" if pd.notna(rmst_value) else "NR"
+            if pd.notna(rmst_ci_lower) and pd.notna(rmst_ci_upper):
+                ci_str = f" (95% CI: {rmst_ci_lower:.1f}–{rmst_ci_upper:.1f})"
+            else:
+                ci_str = " (95% CI: NR)"
             lines.append(
-                f"{row['ajcc_stage']:>10} | RMST: {row['rmst_months']:.1f} mo | "
+                f"{row['ajcc_stage']:>10} | RMST: {rmst_str} mo{ci_str} | "
                 f"Events: {int(row['events'])} | n={int(row['patient_count'])}"
             )
 

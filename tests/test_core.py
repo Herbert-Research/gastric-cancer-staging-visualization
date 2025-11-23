@@ -48,7 +48,10 @@ def test_rmst_calculation():
         horizon_months=20.0,
         stage_order=["Stage I"],
         min_group_size=1,
+        n_bootstrap=50,
     )
 
     assert not rmst.empty
     assert rmst["rmst_months"].iloc[0] == 10.0
+    assert rmst["rmst_ci_lower"].iloc[0] == 10.0
+    assert rmst["rmst_ci_upper"].iloc[0] == 10.0

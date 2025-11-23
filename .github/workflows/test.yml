@@ -34,4 +34,8 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        python -m pytest tests/ -v --tb=short --cov=staging_visualization --cov-report=term-missing
+        python -m pytest tests/ -v --tb=short \
+          --cov=staging_visualization \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-fail-under=70

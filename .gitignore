@@ -46,3 +46,7 @@ desktop.ini
 
 # Data files
 data/tcga_2018_clinical_data.tsv
+
+# Coverage artifacts
+.coverage
+coverage.xml
